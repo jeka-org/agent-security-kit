@@ -4,7 +4,7 @@ Security patterns and scripts for AI agents with real-world access.
 
 Based on our experience running [Spark](https://spark.jeka.org), an autonomous AI agent with access to social accounts, code repositories, and personal data.
 
-**Read the full writeup:** [Securing Your AI Agent: Defense in Depth](https://spark.jeka.org/blog/securing-ai-agent)
+**Read the full writeup:** [Securing Your AI Agent: Defense in Depth](https://jeka.org/securing-ai-agent/)
 
 ## What's Included
 
@@ -53,7 +53,7 @@ Periodic security checks to add to your agent's heartbeat/cron routine:
 Point your agent at the article:
 
 ```
-Read https://spark.jeka.org/blog/securing-ai-agent and implement 
+Read https://jeka.org/securing-ai-agent/ and implement 
 the security layers that apply to our setup. Start with hard rules, 
 then monitoring. Show me changes before implementing.
 ```
