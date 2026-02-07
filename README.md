@@ -27,16 +27,33 @@ One-shot security check for OpenClaw deployments:
 
 ### 2. Background Monitoring (`security-monitor.sh`)
 
-A daemon that runs every 5 minutes checking for:
-- Credential file modifications (hash comparison)
-- Suspicious processes
-- SSH key changes
-- Unexpected network activity
+Continuous security daemon with two check tiers:
 
-**Install:**
+**Light checks (every 5 min):**
+- Credential file modifications (hash comparison)
+- Suspicious processes (miners, malware patterns)
+- SSH authorized_keys changes
+- Unusual outbound connections
+- OpenClaw config tampering
+- Auth failures spike
+
+**Heavy checks (every 15 min):**
+- Skill supply-chain scanning (detects `curl|bash`, `eval`, `wget` patterns)
+- Filesystem permission drift (alerts if state dir permissions change)
+- Secrets exposure (new inline secrets in config)
+- SUID binary changes
+
+**Usage:**
+```bash
+./security-monitor.sh           # One-time light checks
+./security-monitor.sh --full    # One-time light + heavy checks
+./security-monitor.sh --daemon  # Continuous monitoring
+```
+
+**Install as daemon:**
 ```bash
 chmod +x security-monitor.sh
-nohup ./security-monitor.sh > /tmp/security-monitor.log 2>&1 &
+nohup ./security-monitor.sh --daemon > /tmp/security-monitor.log 2>&1 &
 ```
 
 ### 3. Hard Security Rules (`SOUL-security-template.md`)
