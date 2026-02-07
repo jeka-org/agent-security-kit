@@ -167,6 +167,85 @@ check_auth_failures() {
     jq ".lastAuthFailures = $failures" "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
 }
 
+# ============================================
+# HEAVY CHECKS (run hourly, not every 5 min)
+# Inspired by ClawdStrike
+# ============================================
+
+# Check for dangerous patterns in installed skills
+check_skill_supply_chain() {
+    local DANGEROUS='(curl|wget|nc|netcat)\s*[|]|eval\s*\$|base64\s*-d.*[|]'
+    local skills_dirs=("/root/.openclaw/skills" "/root/.openclaw/workspace/skills")
+    
+    for dir in "${skills_dirs[@]}"; do
+        if [[ -d "$dir" ]]; then
+            local matches=""
+            if command -v rg &>/dev/null; then
+                matches=$(rg -l "$DANGEROUS" "$dir" 2>/dev/null || true)
+            else
+                matches=$(grep -rlE "$DANGEROUS" "$dir" 2>/dev/null || true)
+            fi
+            
+            if [[ -n "$matches" ]]; then
+                alert "WARNING" "Risky patterns in skills: $matches"
+            fi
+        fi
+    done
+}
+
+# Check filesystem permission drift
+check_permission_drift() {
+    local STATE_DIR="/root/.openclaw"
+    
+    # Expected permissions
+    declare -A expected=(
+        ["$STATE_DIR"]="700"
+        ["$STATE_DIR/openclaw.json"]="600"
+        ["$STATE_DIR/credentials"]="700"
+        ["$STATE_DIR/agents"]="700"
+    )
+    
+    for path in "${!expected[@]}"; do
+        if [[ -e "$path" ]]; then
+            local actual=$(stat -c "%a" "$path" 2>/dev/null)
+            if [[ "$actual" != "${expected[$path]}" ]]; then
+                alert "WARNING" "Permission drift: $path is $actual (expected ${expected[$path]})"
+            fi
+        fi
+    done
+    
+    # Check for world-writable files in state dir
+    local ww_files=$(find "$STATE_DIR" -xdev -perm -0002 -type f 2>/dev/null | head -5)
+    if [[ -n "$ww_files" ]]; then
+        alert "WARNING" "World-writable files in state dir: $ww_files"
+    fi
+}
+
+# Check for secrets exposed in config (not using env refs)
+check_secrets_exposure() {
+    local config="/root/.openclaw/openclaw.json"
+    if [[ -f "$config" ]]; then
+        # Count inline secrets (keys that look like tokens but aren't env refs)
+        local inline=$(grep -oE '"(token|password|secret|api_?key)"[[:space:]]*:[[:space:]]*"[^$][^"]{20,}' "$config" 2>/dev/null | wc -l)
+        local stored=$(jq -r ".inlineSecrets // 0" "$STATE_FILE" 2>/dev/null)
+        
+        if [[ "$inline" -gt "$stored" ]]; then
+            alert "WARNING" "New inline secrets in config: $inline (was $stored). Consider using env refs."
+        fi
+        
+        jq ".inlineSecrets = $inline" "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+    fi
+}
+
+# Run heavy checks (called less frequently)
+run_heavy_checks() {
+    echo "[$(date -Iseconds)] Running heavy security checks..."
+    check_skill_supply_chain
+    check_permission_drift
+    check_secrets_exposure
+    check_suid_binaries
+}
+
 run_checks() {
     echo "[$(date -Iseconds)] Running security checks..."
     init_state
@@ -187,10 +266,21 @@ run_checks() {
 # Main
 if [[ "${1:-}" == "--daemon" ]]; then
     echo "Starting security monitor daemon..."
+    local iteration=0
     while true; do
         run_checks
+        
+        # Run heavy checks every hour (12 iterations × 5 min = 60 min)
+        iteration=$((iteration + 1))
+        if [[ $((iteration % 12)) -eq 0 ]]; then
+            run_heavy_checks
+        fi
+        
         sleep 300  # Check every 5 minutes
     done
+elif [[ "${1:-}" == "--full" ]]; then
+    run_checks
+    run_heavy_checks
 else
     run_checks
 fi
