@@ -36,9 +36,9 @@ Continuous security daemon with two check tiers:
 - Unusual outbound connections
 - OpenClaw config tampering
 - Auth failures spike
+- **Skill supply-chain** (hash-based: only deep scans when skills change)
 
 **Heavy checks (every 15 min):**
-- Skill supply-chain scanning (detects `curl|bash`, `eval`, `wget` patterns)
 - Filesystem permission drift (alerts if state dir permissions change)
 - Secrets exposure (new inline secrets in config)
 - SUID binary changes

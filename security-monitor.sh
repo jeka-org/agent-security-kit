@@ -168,12 +168,26 @@ check_auth_failures() {
 }
 
 # ============================================
-# HEAVY CHECKS (run hourly, not every 5 min)
-# Inspired by ClawdStrike
+# SKILL SUPPLY-CHAIN CHECK (hash-based)
+# Runs every 5 min, only deep scans on change
 # ============================================
 
-# Check for dangerous patterns in installed skills
-check_skill_supply_chain() {
+# Get hash of skills directory contents
+get_skills_hash() {
+    local skills_dirs=("/root/.openclaw/skills" "/root/.openclaw/workspace/skills")
+    local hash_input=""
+    
+    for dir in "${skills_dirs[@]}"; do
+        if [[ -d "$dir" ]]; then
+            hash_input+=$(find "$dir" -type f -printf '%p %T@\n' 2>/dev/null | sort)
+        fi
+    done
+    
+    echo "$hash_input" | sha256sum | cut -d' ' -f1
+}
+
+# Deep scan for dangerous patterns
+scan_skill_patterns() {
     local DANGEROUS='(curl|wget|nc|netcat)\s*[|]|eval\s*\$|base64\s*-d.*[|]'
     local skills_dirs=("/root/.openclaw/skills" "/root/.openclaw/workspace/skills")
     
@@ -192,6 +206,32 @@ check_skill_supply_chain() {
         fi
     done
 }
+
+# Check skills - hash first, deep scan only if changed
+check_skills_supply_chain() {
+    local current_hash=$(get_skills_hash)
+    local stored_hash=$(jq -r ".skillsHash // \"\"" "$STATE_FILE" 2>/dev/null)
+    
+    if [[ -z "$stored_hash" ]]; then
+        # First run - scan and store hash
+        echo "  Skills: First run, scanning..."
+        scan_skill_patterns
+        jq ".skillsHash = \"$current_hash\"" "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+    elif [[ "$current_hash" != "$stored_hash" ]]; then
+        # Changed - deep scan
+        echo "  Skills: Change detected, scanning..."
+        alert "INFO" "Skills directory changed, running supply-chain scan"
+        scan_skill_patterns
+        jq ".skillsHash = \"$current_hash\"" "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+    else
+        echo "  Skills: No changes"
+    fi
+}
+
+# ============================================
+# HEAVY CHECKS (every 15 min)
+# Inspired by ClawdStrike
+# ============================================
 
 # Check filesystem permission drift
 check_permission_drift() {
@@ -240,7 +280,6 @@ check_secrets_exposure() {
 # Run heavy checks (called less frequently)
 run_heavy_checks() {
     echo "[$(date -Iseconds)] Running heavy security checks..."
-    check_skill_supply_chain
     check_permission_drift
     check_secrets_exposure
     check_suid_binaries
@@ -257,7 +296,7 @@ run_checks() {
     check_openclaw_config
     check_file_activity
     check_auth_failures
-    # check_suid_binaries  # Can be slow, enable if needed
+    check_skills_supply_chain  # Hash-based, only deep scans on change
     
     # Update last check time
     jq ".lastCheck = $(date +%s)" "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
