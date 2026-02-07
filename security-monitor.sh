@@ -270,9 +270,9 @@ if [[ "${1:-}" == "--daemon" ]]; then
     while true; do
         run_checks
         
-        # Run heavy checks every hour (12 iterations × 5 min = 60 min)
+        # Run heavy checks every 15 min (3 iterations × 5 min = 15 min)
         iteration=$((iteration + 1))
-        if [[ $((iteration % 12)) -eq 0 ]]; then
+        if [[ $((iteration % 3)) -eq 0 ]]; then
             run_heavy_checks
         fi
         
