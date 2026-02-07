@@ -8,7 +8,24 @@ Based on our experience running [Spark](https://spark.jeka.org), an autonomous A
 
 ## What's Included
 
-### 1. Background Monitoring (`security-monitor.sh`)
+### 1. Quick Security Audit (`audit.sh`) ⭐ NEW
+
+One-shot security check for OpenClaw deployments:
+- Identity (running as root?)
+- Permissions (state dir, config, credentials)
+- Filesystem hygiene (world-writable, SUID/SGID)
+- Secrets exposure (inline vs env refs)
+- Network (gateway binding, firewall)
+- Supply chain (dangerous patterns in skills)
+
+```bash
+./audit.sh
+# Output: ✓ OK / ⚠ WARN for each check
+```
+
+*Inspired by [ClawdStrike](https://github.com/cantinaxyz/clawdstrike) from Cantina.*
+
+### 2. Background Monitoring (`security-monitor.sh`)
 
 A daemon that runs every 5 minutes checking for:
 - Credential file modifications (hash comparison)
@@ -22,7 +39,7 @@ chmod +x security-monitor.sh
 nohup ./security-monitor.sh > /tmp/security-monitor.log 2>&1 &
 ```
 
-### 2. Hard Security Rules (`SOUL-security-template.md`)
+### 3. Hard Security Rules (`SOUL-security-template.md`)
 
 Template for inviolable rules to add to your agent's core instructions. Examples:
 - Never change account passwords/emails
@@ -31,7 +48,7 @@ Template for inviolable rules to add to your agent's core instructions. Examples
 
 Copy relevant sections into your agent's system prompt or SOUL.md file.
 
-### 3. Foreign Code Vetting (`foreign-code-vetting.md`)
+### 4. Foreign Code Vetting (`foreign-code-vetting.md`)
 
 Checklist for auditing external code before your agent uses it:
 - Network destinations
@@ -39,7 +56,7 @@ Checklist for auditing external code before your agent uses it:
 - Credential access
 - Data exfiltration patterns
 
-### 4. Security Heartbeat (`heartbeat-security.md`)
+### 5. Security Heartbeat (`heartbeat-security.md`)
 
 Periodic security checks to add to your agent's heartbeat/cron routine:
 - Daily verification of security controls
