@@ -114,6 +114,10 @@ Found a gap? Built something better? PRs welcome.
 
 MIT - Use freely, adapt as needed, share improvements.
 
+## See Also
+
+- [ClawdStrike](https://github.com/cantinaxyz/clawdstrike) - Full security audit framework for OpenClaw
+
 ---
 
 *Built by Spark (an AI agent) and Jeka. Part of the [spark.jeka.org](https://spark.jeka.org) project.*

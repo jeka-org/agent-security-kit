@@ -1,25 +1,32 @@
 #!/bin/bash
-# security-monitor.sh - Real-time security monitoring for Spark
+# security-monitor.sh - Real-time security monitoring for AI agents
 # Detects anomalous patterns and alerts via file/log
 #
-# Usage: ./security-monitor.sh [--daemon]
+# Usage: ./security-monitor.sh [--daemon] [--full]
 # In daemon mode, runs continuously. Otherwise, single check.
+# --full includes heavy checks (permissions, SUID, secrets)
 
 set -uo pipefail
 
-ALERT_FILE="/root/.openclaw/workspace/security-alerts.log"
-STATE_FILE="/root/.openclaw/workspace/memory/security-state.json"
-BASELINE_FILE="/root/.openclaw/workspace/security-baseline.json"
+# Configurable paths (override with environment variables)
+STATE_DIR="${OPENCLAW_STATE_DIR:-$HOME/.openclaw}"
+WORKSPACE="${OPENCLAW_WORKSPACE_DIR:-$STATE_DIR/workspace}"
+
+ALERT_FILE="${WORKSPACE}/security-alerts.log"
+STATE_FILE="${WORKSPACE}/memory/security-state.json"
+BASELINE_FILE="${WORKSPACE}/security-baseline.json"
 
 # Thresholds
 MAX_OUTBOUND_CONNS=50
 MAX_FILE_CHANGES_PER_MIN=100
+
+# Credential files to monitor (customize for your setup)
 CREDENTIAL_FILES=(
-    "/root/.github_token_*"
-    "/root/.openclaw/openclaw.json"
-    "/root/.openclaw/google-service-account.json"
-    "/root/.config/gh/hosts.yml"
-    "/root/.config/moltbook/credentials.json"
+    "$HOME/.github_token_*"
+    "$STATE_DIR/openclaw.json"
+    "$STATE_DIR/google-service-account.json"
+    "$HOME/.config/gh/hosts.yml"
+    # Add your own credential paths here
 )
 
 alert() {
@@ -31,7 +38,7 @@ alert() {
     
     # For critical alerts, also write to a trigger file
     if [[ "$severity" == "CRITICAL" ]]; then
-        echo "$message" > /root/.openclaw/workspace/SECURITY_ALERT
+        echo "$message" > "${WORKSPACE}/SECURITY_ALERT"
     fi
 }
 
@@ -119,7 +126,7 @@ check_suspicious_processes() {
 
 # Check for unauthorized SSH keys
 check_ssh_keys() {
-    local auth_keys="/root/.ssh/authorized_keys"
+    local auth_keys="$HOME/.ssh/authorized_keys"
     if [[ -f "$auth_keys" ]]; then
         local current_hash=$(sha256sum "$auth_keys" | cut -d' ' -f1)
         local stored_hash=$(jq -r ".sshKeysHash // \"\"" "$STATE_FILE" 2>/dev/null)
@@ -134,7 +141,7 @@ check_ssh_keys() {
 
 # Check OpenClaw config for tampering
 check_openclaw_config() {
-    local config="/root/.openclaw/openclaw.json"
+    local config="${STATE_DIR}/openclaw.json"
     if [[ -f "$config" ]]; then
         # Check for suspicious tool additions or policy changes
         local has_full_security=$(jq -r '.security // "deny"' "$config" 2>/dev/null)
@@ -147,7 +154,7 @@ check_openclaw_config() {
 # Check for rapid file changes (potential exfiltration or ransomware)
 check_file_activity() {
     # Count recent file changes in sensitive directories
-    local recent_changes=$(find /root -type f -mmin -1 2>/dev/null | wc -l)
+    local recent_changes=$(find "$HOME" -type f -mmin -1 2>/dev/null | wc -l)
     
     if [[ "$recent_changes" -gt "$MAX_FILE_CHANGES_PER_MIN" ]]; then
         alert "WARNING" "High file activity: $recent_changes files modified in last minute"
@@ -174,7 +181,7 @@ check_auth_failures() {
 
 # Get hash of skills directory contents
 get_skills_hash() {
-    local skills_dirs=("/root/.openclaw/skills" "/root/.openclaw/workspace/skills")
+    local skills_dirs=("${STATE_DIR}/skills" "${WORKSPACE}/skills")
     local hash_input=""
     
     for dir in "${skills_dirs[@]}"; do
@@ -189,7 +196,7 @@ get_skills_hash() {
 # Deep scan for dangerous patterns
 scan_skill_patterns() {
     local DANGEROUS='(curl|wget|nc|netcat)\s*[|]|eval\s*\$|base64\s*-d.*[|]'
-    local skills_dirs=("/root/.openclaw/skills" "/root/.openclaw/workspace/skills")
+    local skills_dirs=("${STATE_DIR}/skills" "${WORKSPACE}/skills")
     
     for dir in "${skills_dirs[@]}"; do
         if [[ -d "$dir" ]]; then
@@ -235,7 +242,7 @@ check_skills_supply_chain() {
 
 # Check filesystem permission drift
 check_permission_drift() {
-    local STATE_DIR="/root/.openclaw"
+    # Uses global STATE_DIR
     
     # Expected permissions
     declare -A expected=(
@@ -263,7 +270,7 @@ check_permission_drift() {
 
 # Check for secrets exposed in config (not using env refs)
 check_secrets_exposure() {
-    local config="/root/.openclaw/openclaw.json"
+    local config="${STATE_DIR}/openclaw.json"
     if [[ -f "$config" ]]; then
         # Count inline secrets (keys that look like tokens but aren't env refs)
         local inline=$(grep -oE '"(token|password|secret|api_?key)"[[:space:]]*:[[:space:]]*"[^$][^"]{20,}' "$config" 2>/dev/null | wc -l)
