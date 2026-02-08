@@ -112,7 +112,7 @@ Found a gap? Built something better? PRs welcome.
 
 ## License
 
-MIT - Use freely, adapt as needed, share improvements.
+AGPL-3.0 - Use freely, adapt as needed, share improvements.
 
 ## See Also
 
